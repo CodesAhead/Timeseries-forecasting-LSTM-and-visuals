@@ -1,0 +1,37 @@
+from flask import Flask, render_template, request
+import plotly
+import plotly.graph_objs as go
+import pandas as pd
+import numpy as np
+import json
+import matplotlib.pyplot as plt
+import io
+import base64
+
+
+def build_graph(x_coordinates, y_coordinates):
+    img = io.BytesIO()
+    plt.figure(figsize=(14, 4))
+    plt.plot(x_coordinates, y_coordinates)
+    plt.savefig(img, format='png')
+    img.seek(0)
+    graph_url = base64.b64encode(img.getvalue()).decode()
+    plt.close()
+    return 'data:image/png;base64,{}'.format(graph_url)
+
+def build_plot(time, actual, predicted):
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatter(
+        x=time,
+        y=actual,
+        name="Actual",
+        line_color='deepskyblue',
+        opacity=0.8))
+    fig.add_trace(go.Scatter(
+        x=time,
+        y=predicted,
+        name="Predicted",
+        line_color='Orange',
+        opacity=0.8))
+    fig.show()
