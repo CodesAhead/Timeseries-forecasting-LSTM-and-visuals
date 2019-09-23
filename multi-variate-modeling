@@ -1,0 +1,152 @@
+
+import pandas as pd
+import numpy as np
+from numpy import hstack
+from numpy import array
+
+from matplotlib import pyplot as plt
+from sklearn.preprocessing import MinMaxScaler
+from keras.models import Sequential
+from keras.layers import Dense
+from keras.layers import LSTM
+from keras  import callbacks
+from keras import optimizers
+from keras.optimizers import Adam
+
+import os
+os.listdir()
+
+data = pd.read_csv('Demand+Weather.csv')
+
+data.info()
+
+data = data.set_index('Timestamp')
+data.head(100)
+
+import seaborn as sns
+
+sns.swarmplot(data['Temp.(F)'].iloc[0:2000],data['demand'].iloc[0:2000])
+
+plt.figure(figsize=(30,10))
+data.plot()
+
+print('Min', np.min(data))
+print('Max', np.max(data))
+
+
+in_seq1 = array([data['Temp.(F)']])
+
+
+in_seq2 = array([data['Humid.(%)']])
+
+in_seq3 = array([data['hour']])
+
+out_seq = array([data['demand']])
+
+
+in_seq1 = in_seq1.reshape((35064 , 1))
+in_seq2 = in_seq2.reshape((35064 , 1))
+in_seq3 = in_seq3.reshape((35064 , 1))
+out_seq = out_seq.reshape((35064 , 1))
+
+# scale data
+scaler = MinMaxScaler(feature_range=(0, 1))
+#scaled = scaler.fit_transform(data)
+
+in_seq1 = scaler.fit_transform(in_seq1)
+in_seq2 = scaler.fit_transform(in_seq2)
+in_seq3 = scaler.fit_transform(in_seq3)
+out_seq = scaler.fit_transform(out_seq)
+
+in_seq3
+
+# store it horizontaly
+dataset = hstack((in_seq1,in_seq2,in_seq3, out_seq))
+#dataset = hstack((in_seq1, in_seq2, out_seq))
+
+dataset_df = pd.DataFrame(dataset)
+
+dataset_df.to_csv('dataset_DF.csv',index=False)
+
+dataset_numpy = dataset_df.as_matrix()
+
+print(dataset)
+
+# train test split
+import numpy
+indices = numpy.random.permutation(dataset.shape[0])
+training_idx, test_idx = indices[:34300], indices[34300:35020]
+train, test = dataset[training_idx,:], dataset[test_idx,:]
+
+# preparing data with 3 lookbacks for LSTM
+
+def split_sequences(sequences, n_steps):
+	X, y = list(), list()
+	for i in range(len(sequences)):
+		# find the end of this pattern
+		end_ix = i + n_steps
+		# check if we are beyond the dataset
+		if end_ix > len(sequences):
+			break
+		# gather input and output parts of the pattern
+		seq_x, seq_y = sequences[i:end_ix, :-1], sequences[end_ix-1, -1]
+		X.append(seq_x)
+		y.append(seq_y)
+	return array(X), array(y)
+
+n_steps = 3
+X, y = split_sequences(train, n_steps)
+print(X.shape, y.shape)
+
+x_test, y_test = split_sequences(test, n_steps)
+print(x_test.shape,y_test.shape)
+
+for i in range(3):
+	print(X[i], y[i])
+
+for i in range(3):
+  print(x_test[i],y_test[i])
+
+
+batch_size = 10
+n_features = X.shape[2]
+model = Sequential()
+model.add(LSTM(40, activation='relu',return_sequences=True, input_shape=(n_steps,n_features)))
+#model.add(Dropout(0.2))
+model.add(LSTM(40, activation='relu',return_sequences=True, input_shape=(n_steps,n_features)))
+#model.add(Dropout(0.2))
+model.add(LSTM(20, activation='relu', input_shape=(n_steps,n_features)))
+model.add(Dense(1))
+model.compile(loss='mean_squared_error', optimizer='adam')
+model.fit(X, y, epochs=5, batch_size=batch_size, verbose=2, shuffle=True)
+model.reset_states()
+
+testPredict = model.predict(x_test)
+#testPredict = scaler.inverse_transform(testPredict)
+#y_test = scaler.inverse_transform([y_test])
+testPredict
+
+import pickle
+model2 = pickle.load(open("/home/anthony/PycharmProjects/first_project/model_multi.dat", "rb"))
+
+
+#testPredict = model2.predict(x_test)
+#testPredict = scaler.inverse_transform(testPredict)
+testPredict_df = pd.DataFrame(testPredict , columns=['predicted'])
+
+testPredict_df.to_csv('multi_pred.csv')
+
+testPredict_df.head()
+
+#import math
+#from sklearn.metrics import mean_squared_error
+import pickle
+from google.colab import drive
+
+drive.mount("/content/drive")
+
+pickle.dump(model,open("/content/drive/My Drive/model_multi.dat",'wb'))
+
+actual_df = pd.read_csv('/home/anthony/PycharmProjects/first_project/Uni_Actual.csv')
+predicted_df = pd.read_csv('/home/anthony/PycharmProjects/first_project/Uni_Predicted.csv')
+
